@@ -4,7 +4,7 @@ import rateLimit from "express-rate-limit"
 
 load_dotenv.config()
 
-const port = process.env.PORT || '3000'
+const port = process.env.PORT || '9999'
 
 // Rate limiter
 const limiter = rateLimit({
