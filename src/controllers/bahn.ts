@@ -1,4 +1,4 @@
-import { getAllStations, getDatesOfJourney, getJourney, getJourneyStationReference, getStationByDs100, getStationByEva, getStationByName, getStatistics } from "../services/bahn";
+import { getAllStations, getDatesOfJourney, getJourney, getJourneyOfStationByDs100, getJourneyStationReference, getStationByDs100, getStationByEva, getStationByName, getStatistics } from "../services/bahn";
 import { Request, Response } from "express";
 import { Station, TrainType } from "../models/outbound/bahn";
 import { validateBody } from "../util/validation";
@@ -96,3 +96,19 @@ export async function getJourneyController(req: Request, res: Response) {
     }
 }
 
+export async function getJourneysOfStationController(req: Request, res: Response) {
+    try{
+        const body = req.body;
+        const validation = validateBody(body, {trainType: false, trainNumber: false, date: true, stationName: false, ds100: true, eva: false});
+        if(validation){
+            res.status(400).send(validation);
+            return;
+        }
+        const journeys = await getJourneyOfStationByDs100(body.ds100, new Date(body.date));
+
+        res.json(journeys);
+    }
+    catch(err: Error | any){
+        res.status(500).json({"error:": err.message});
+    }
+}

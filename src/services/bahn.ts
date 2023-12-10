@@ -3,6 +3,7 @@ import { BahnDbConfig } from '../config/bahn.db';
 import { Station as DbStation, Journey, Stop, StopDetail } from '../models/database/bahn';
 import { Station as ApiStation, Journey as ApiJourney, Stop as ApiStop, TrainType } from '../models/outbound/bahn';
 import { v4 as uuidv4 } from 'uuid';
+import * as Cache from 'memory-cache';
 
 const pool = mariadb.createPool(BahnDbConfig);
 
@@ -193,18 +194,6 @@ async function getMetadataOfJourney(id: string, start: Date){
     const firstStop = rows[0];
     const lastStop = rows[rows.length - 1];
 
-    // check for every stop if it is cancelled
-    const cancelled = [];
-    for(const stop of rows){
-        if(stop.actual_details_id === null){
-            continue;
-        }
-        const details = await getStopDetails(stop.actual_details_id);
-        if(details && details.status === 'CANCELLED'){
-            cancelled.push(stop);
-        }
-    }
-
     const firstStation = await getStationByEva(firstStop.station_eva);
     const lastStation = await getStationByEva(lastStop.station_eva);
 
@@ -213,7 +202,6 @@ async function getMetadataOfJourney(id: string, start: Date){
         "lastStation": lastStation,
         "firstStop": firstStop,
         "lastStop": lastStop,
-        "cancelledStops": cancelled
     }
 
 
@@ -243,6 +231,18 @@ export async function getDatesOfJourney(type: TrainType, number: number){
         "dates": meta
     }
 
+}
+
+async function getJourneyById(id: string, start: Date){
+    const conn = await pool.getConnection();
+    const rows = await conn.query('SELECT * FROM journeys WHERE id = ? AND start = ?', [id, start]) as Journey[];
+    conn.release();
+
+    if(rows.length === 0){
+        throw new Error("Journey not found");
+    }
+
+    return getJourney(rows[0].train_type, rows[0].train_number, rows[0].start);
 }
 
 export async function getJourney(type: TrainType, number: number, start: Date): Promise<ApiJourney | null>{
@@ -351,4 +351,66 @@ export async function getJourneyStationReference(type: TrainType, number: number
         throw new Error("Reference Stop has no arrival or departure");
     }
 
+}
+
+async function getSmallMetadataOfJourney(j_id: string, start: Date){
+    const conn = await pool.getConnection();
+    const journey = await conn.query('SELECT * FROM journeys WHERE id = ? AND start = ? order by start', [j_id, start]) as Journey[];
+    const stops = await conn.query('SELECT * FROM stops WHERE journey_id = ? AND journey_start = ?', [j_id, start]) as Stop[];
+    conn.release();
+
+    const orderedStops = stops.sort((a, b) => a.ordinal - b.ordinal);
+
+    const stations = JSON.parse(Cache.get("stations")) as ApiStation[];
+
+    if(!stations){
+        throw new Error("Stations not found");
+    }
+
+    // Get origin and destination
+    const origin = stations.find(s => s.eva === stops[0].station_eva);
+    const destination = stations.find(s => s.eva === stops[stops.length - 1].station_eva);  
+
+    return {
+        "type": journey[0].train_type,
+        "number": journey[0].train_number,
+        "line": journey[0].train_line,
+        "origin": origin,
+        "destination": destination,
+        "stops": stops[stops.length - 1].ordinal
+    }
+}
+
+export async function getJourneyOfStationByDs100(ds100: string, date: Date){
+
+    const station = await getStationByDs100(ds100);
+    if(!station){
+        throw new Error("Station not found");
+    }
+    date.setHours(0,0,0,0);
+
+    const conn = await pool.getConnection();
+    const rows = await conn.query('SELECT * FROM stops WHERE station_eva = ? AND journey_start BETWEEN ? AND ? + INTERVAL 1 DAY - INTERVAL 1 SECOND', [station.eva, date, date]) as Stop[];
+    conn.release();
+
+    const journeys = [];
+
+    for(const stop of rows){
+        const journey = await getSmallMetadataOfJourney(stop.journey_id, stop.journey_start);
+        journeys.push(journey);
+    }
+
+    if(journeys.length === 0){
+        return {
+            "station": station,
+            "length": 0,
+            "journeys": []
+        }
+    }
+
+    return {
+        "station": station,
+        "length": journeys.length,
+        "journeys": journeys
+    }
 }
