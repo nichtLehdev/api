@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "",
   "main": "server.ts",
-  "engines":{
+  "engines": {
     "node": "18.x"
   },
   "scripts": {
@@ -15,12 +15,14 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@types/body-parser": "^1.19.5",
     "@types/express": "^4.17.21",
     "@types/uuid": "^9.0.7",
     "ts-node": "^10.9.1",
     "typescript": "^5.3.3"
   },
   "dependencies": {
+    "body-parser": "^1.20.2",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "express-rate-limit": "^7.1.5",
