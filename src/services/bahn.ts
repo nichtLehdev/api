@@ -149,26 +149,26 @@ export async function getStationByDs100(ds100: string) {
     return convertStation(rows[0]);
 }
 
-async function getStopDetails(id: typeof uuidv4){
+async function getStopDetails(id: typeof uuidv4) {
     const conn = await pool.getConnection();
     const rows = await conn.query('SELECT * FROM stop_details WHERE id = ?', [id]) as StopDetail[];
     conn.release();
 
-    if(rows.length === 0){
+    if (rows.length === 0) {
         throw new Error("StopDetail not found");
     }
 
     return rows[0];
 }
 
-async function getStopsOfJourney(id: string, start: Date){
+async function getStopsOfJourney(id: string, start: Date) {
     const conn = await pool.getConnection();
     const rows = await conn.query('SELECT * FROM stops WHERE journey_id = ? AND journey_start = ? order by ordinal', [id, start]) as Stop[];
     conn.release();
 
     const stops = [];
 
-    for(const row of rows){
+    for (const row of rows) {
         const stop: Stop = {
             "id": row.id,
             "journey_id": row.journey_id,
@@ -184,7 +184,7 @@ async function getStopsOfJourney(id: string, start: Date){
     return stops;
 }
 
-async function getMetadataOfJourney(id: string, start: Date){
+async function getMetadataOfJourney(id: string, start: Date) {
     const conn = await pool.getConnection();
     // Get first and last stop
     // Get all stops of journey
@@ -207,14 +207,14 @@ async function getMetadataOfJourney(id: string, start: Date){
 
 }
 
-export async function getDatesOfJourney(type: TrainType, number: number){
+export async function getDatesOfJourney(type: TrainType, number: number) {
     const conn = await pool.getConnection();
     const rows = await conn.query('SELECT * FROM journeys WHERE train_type = ? AND train_number = ? order by start desc', [type, number]) as Journey[];
     conn.release();
 
     const meta = []
 
-    for(const row of rows){
+    for (const row of rows) {
         const metadata = await getMetadataOfJourney(row.id, row.start);
         meta.push({
             "date": row.start,
@@ -233,33 +233,33 @@ export async function getDatesOfJourney(type: TrainType, number: number){
 
 }
 
-async function getJourneyById(id: string, start: Date){
+async function getJourneyById(id: string, start: Date) {
     const conn = await pool.getConnection();
     const rows = await conn.query('SELECT * FROM journeys WHERE id = ? AND start = ?', [id, start]) as Journey[];
     conn.release();
 
-    if(rows.length === 0){
+    if (rows.length === 0) {
         throw new Error("Journey not found");
     }
 
     return getJourney(rows[0].train_type, rows[0].train_number, rows[0].start);
 }
 
-export async function getJourney(type: TrainType, number: number, start: Date): Promise<ApiJourney | null>{
+export async function getJourney(type: TrainType, number: number, start: Date): Promise<ApiJourney | null> {
     const date = new Date(start);
-    date.setHours(0,0,0,0);
+    date.setHours(0, 0, 0, 0);
 
     const conn = await pool.getConnection();
     const rows = await conn.query('SELECT * FROM journeys WHERE train_type = ? AND train_number = ? AND start BETWEEN ? AND ? + interval 1 day - interval 1 second', [type, number, date, date]) as Journey[];
     conn.release();
 
-    if(rows.length === 0){
+    if (rows.length === 0) {
         throw new Error("Journey not found");
     }
 
     // Get stops
     const stops = await getStopsOfJourney(rows[0].id, rows[0].start);
-    
+
     // Convert stops
     const apiStops = await convertStops(stops);
 
@@ -287,31 +287,31 @@ export async function getJourney(type: TrainType, number: number, start: Date): 
  * @param date The date of the journey at the reference station
  * @param referenceStationDs100 The ds100 code of the reference station
  */
-export async function getJourneyStationReference(type: TrainType, number: number, date: Date, referenceStationDs100: string){
+export async function getJourneyStationReference(type: TrainType, number: number, date: Date, referenceStationDs100: string) {
 
     const journey = await getJourney(type, number, date);
 
-    if(!journey){
+    if (!journey) {
         throw new Error("Journey not found");
     }
 
     // Get reference station
     const referenceStation = await getStationByDs100(referenceStationDs100);
 
-    if(!referenceStation){
+    if (!referenceStation) {
         throw new Error("Reference Station not found");
     }
 
     // Check if reference station is in journey
     let referenceStop: ApiStop | null = null;
-    for(const stop of journey.stops){
-        if(stop.station.ds100 === referenceStation.ds100){
+    for (const stop of journey.stops) {
+        if (stop.station.ds100 === referenceStation.ds100) {
             referenceStop = stop;
             break;
         }
     }
 
-    if(!referenceStop){
+    if (!referenceStop) {
         throw new Error("Reference Station not in Journey");
     }
 
@@ -319,41 +319,41 @@ export async function getJourneyStationReference(type: TrainType, number: number
 
     // Check if Journey Start is on the same day as the arrival or the departure of the reference station
     const journeyStart = new Date(journey.start);
-    journeyStart.setHours(0,0,0,0);
+    journeyStart.setHours(0, 0, 0, 0);
 
-    if(referenceStop.arrival){
+    if (referenceStop.arrival) {
         const arrival = new Date(referenceStop.arrival);
-        arrival.setHours(0,0,0,0);
-        if(arrival.getTime() !== journeyStart.getTime()){
+        arrival.setHours(0, 0, 0, 0);
+        if (arrival.getTime() !== journeyStart.getTime()) {
             // get journey of arrival day
             const journeyArrivalDay = await getJourney(type, number, arrival);
-            if(!journeyArrivalDay){
+            if (!journeyArrivalDay) {
                 throw new Error("Journey not found");
             }
 
             return journeyArrivalDay;
         }
     }
-    else if(referenceStop.departure){
+    else if (referenceStop.departure) {
         const departure = new Date(referenceStop.departure);
-        departure.setHours(0,0,0,0);
-        if(departure.getTime() !== journeyStart.getTime()){
+        departure.setHours(0, 0, 0, 0);
+        if (departure.getTime() !== journeyStart.getTime()) {
             // get journey of departure day
             const journeyDepartureDay = await getJourney(type, number, departure);
-            if(!journeyDepartureDay){
+            if (!journeyDepartureDay) {
                 throw new Error("Journey not found");
             }
 
             return journeyDepartureDay;
         }
     }
-    else{
+    else {
         throw new Error("Reference Stop has no arrival or departure");
     }
 
 }
 
-async function getSmallMetadataOfJourney(j_id: string, start: Date){
+async function getSmallMetadataOfJourney(j_id: string, start: Date) {
     const conn = await pool.getConnection();
     const journey = await conn.query('SELECT * FROM journeys WHERE id = ? AND start = ? order by start', [j_id, start]) as Journey[];
     const stops = await conn.query('SELECT * FROM stops WHERE journey_id = ? AND journey_start = ?', [j_id, start]) as Stop[];
@@ -363,13 +363,13 @@ async function getSmallMetadataOfJourney(j_id: string, start: Date){
 
     const stations = JSON.parse(Cache.get("stations")) as ApiStation[];
 
-    if(!stations){
+    if (!stations) {
         throw new Error("Stations not found");
     }
 
     // Get origin and destination
     const origin = stations.find(s => s.eva === stops[0].station_eva);
-    const destination = stations.find(s => s.eva === stops[stops.length - 1].station_eva);  
+    const destination = stations.find(s => s.eva === stops[stops.length - 1].station_eva);
 
     return {
         "type": journey[0].train_type,
@@ -381,13 +381,13 @@ async function getSmallMetadataOfJourney(j_id: string, start: Date){
     }
 }
 
-export async function getJourneyOfStationByDs100(ds100: string, date: Date){
+export async function getJourneyOfStationByDs100(ds100: string, date: Date) {
 
     const station = await getStationByDs100(ds100);
-    if(!station){
+    if (!station) {
         throw new Error("Station not found");
     }
-    date.setHours(0,0,0,0);
+    date.setHours(0, 0, 0, 0);
 
     const conn = await pool.getConnection();
     const rows = await conn.query('SELECT * FROM stops WHERE station_eva = ? AND journey_start BETWEEN ? AND ? + INTERVAL 1 DAY - INTERVAL 1 SECOND', [station.eva, date, date]) as Stop[];
@@ -395,12 +395,12 @@ export async function getJourneyOfStationByDs100(ds100: string, date: Date){
 
     const journeys = [];
 
-    for(const stop of rows){
+    for (const stop of rows) {
         const journey = await getSmallMetadataOfJourney(stop.journey_id, stop.journey_start);
         journeys.push(journey);
     }
 
-    if(journeys.length === 0){
+    if (journeys.length === 0) {
         return {
             "station": station,
             "length": 0,
@@ -412,5 +412,185 @@ export async function getJourneyOfStationByDs100(ds100: string, date: Date){
         "station": station,
         "length": journeys.length,
         "journeys": journeys
+    }
+}
+
+type SmallStop = {
+    journey_id: string,
+    journey_start: Date,
+    ordinal: number,
+    station_eva: number,
+    train_type: TrainType,
+    train_number: number,
+    planned_arrival: Date | null,
+    planned_departure: Date | null,
+    actual_arrival: Date | null,
+    actual_departure: Date | null
+
+}
+
+async function getPreviousStop(stop: SmallStop): Promise<SmallStop | null> {
+    const conn = await pool.getConnection();
+    const rows = await conn.query('SELECT s.journey_id, s.journey_start, s.ordinal, s.station_eva, j.train_type,  j.train_number, psd.arrival as planned_arrival, psd.departure as planned_departure, asd.arrival as actual_arrival, asd.departure as actual_departure FROM stops s INNER JOIN journeys j on s.journey_id = j.id AND s.journey_start = j.start INNER JOIN stop_details psd on s.planned_details_id = psd.id LEFT OUTER JOIN stop_details asd on s.actual_details_id = asd.id WHERE s.journey_id = ? AND s.journey_start = ? AND s.ordinal = ?',
+     [stop.journey_id, stop.journey_start, stop.ordinal - 1]) as SmallStop[];
+    conn.release();
+
+    if (rows.length === 0) {
+        return null;
+    }
+
+    return rows[0];
+}
+
+async function getNextStop(stop: SmallStop): Promise<SmallStop | null> {
+    const conn = await pool.getConnection();
+    const rows = await conn.query('SELECT s.journey_id, s.journey_start, s.ordinal, s.station_eva, j.train_type, j.train_number, psd.arrival as planned_arrival, psd.departure as planned_departure, asd.arrival as actual_arrival, asd.departure as actual_departure FROM stops s INNER JOIN journeys j on s.journey_id = j.id AND s.journey_start = j.start INNER JOIN stop_details psd on s.planned_details_id = psd.id LEFT OUTER JOIN stop_details asd on s.actual_details_id = asd.id WHERE s.journey_id = ? AND s.journey_start = ? AND s.ordinal = ?',
+        [stop.journey_id, stop.journey_start, stop.ordinal + 1]) as SmallStop[];
+    conn.release();
+
+    if (rows.length === 0) {
+        return null;
+    }
+
+    return rows[0];
+}
+
+/**
+ * Gets all connections from a station
+ * Steps:
+ * - Get station by ds100
+ * - Get all stops of station
+ * - For each stop:
+ * - Get previous and next stop (if exists)
+ * - Get Station of previous and next stop
+ * - Add station to list
+ */
+export async function getStationConnections(ds100: string) {
+    const station = await getStationByDs100(ds100);
+    if (!station) {
+        throw new Error("Station not found");
+    }
+
+    const conn = await pool.getConnection();
+    const rows = await conn.query('SELECT s.journey_id, s.journey_start, s.ordinal, s.station_eva, j.train_type, j.train_number, psd.arrival as planned_arrival, psd.departure as planned_departure, asd.arrival as actual_arrival, asd.departure as actual_departure FROM stops s INNER JOIN journeys j on s.journey_id = j.id AND s.journey_start = j.start INNER JOIN stop_details psd on s.planned_details_id = psd.id LEFT OUTER JOIN stop_details asd on s.actual_details_id = asd.id WHERE station_eva = ? AND journey_start BETWEEN ? AND ?',
+        [station.eva, new Date('2023-12-10 00:00:00'), new Date('2023-12-11 23:59:59')]
+    ) as SmallStop[];
+    conn.release();
+
+    const connectingStations: {
+        station: ApiStation,
+        averagePlannedTime: number,
+        averageActualTime: number,
+        length: number
+    }[] = [];
+
+    for (const stop of rows) {
+        // Get previous and next stop
+        const prevStop = await getPreviousStop(stop);
+        const nextStop = await getNextStop(stop);
+
+        if (!prevStop && !nextStop) {
+            continue;
+        }
+
+        // Get station of previous and next stop
+        let prevStation: ApiStation | null = null;
+        let nextStation: ApiStation | null = null;
+
+        if (prevStop) {
+            prevStation = await getStationByEva(prevStop.station_eva);
+        }
+
+        if (nextStop) {
+            nextStation = await getStationByEva(nextStop.station_eva);
+        }
+
+        if (!prevStation && !nextStation) {
+            continue;
+        }
+
+        if (prevStop !== null) {
+            // Get Times between stations
+            const plannedTime = Math.round((stop.planned_arrival!.getTime() - prevStop.planned_departure!.getTime()) / (1000 * 60));
+            let actualTime = 0;
+            if (stop.actual_arrival) {
+                actualTime = stop.actual_arrival.getTime();
+            }
+            else {
+                actualTime = stop.planned_arrival!.getTime();
+            }
+            if (prevStop.actual_departure) {
+                actualTime -= prevStop.actual_departure.getTime()
+            }
+            else {
+                actualTime -= prevStop.planned_departure!.getTime();
+            }
+            actualTime = Math.round(actualTime / (1000 * 60));
+
+            // Check if station is already in list
+            const index = connectingStations.findIndex(s => s.station.eva === prevStation!.eva);
+            if (index === -1) {
+                connectingStations.push({
+                    "station": prevStation!,
+                    "averagePlannedTime": plannedTime,
+                    "averageActualTime": actualTime,
+                    "length": 1
+                });
+            }
+            else {
+                connectingStations[index].averagePlannedTime += plannedTime;
+                connectingStations[index].averageActualTime += actualTime;
+                connectingStations[index].length++;
+            }
+        }
+
+        if (nextStop !== null) {
+            // Get Times between stations
+            const plannedTime = Math.round(( nextStop.planned_arrival!.getTime() - stop.planned_departure!.getTime()) / (1000 * 60));
+            let actualTime = 0;
+            
+            if(nextStop.actual_arrival){
+                actualTime = nextStop.actual_arrival.getTime();
+            }
+            else{
+                actualTime = nextStop.planned_arrival!.getTime();
+            }
+            if (stop.actual_departure) {
+                actualTime -= stop.actual_departure.getTime()
+            }
+            else {
+                actualTime -= stop.planned_departure!.getTime();
+            }
+            actualTime = Math.round(actualTime / (1000 * 60));
+
+            // Check if station is already in list
+            const index = connectingStations.findIndex(s => s.station.eva === nextStation!.eva);
+            if (index === -1) {
+                connectingStations.push({
+                    "station": nextStation!,
+                    "averagePlannedTime": plannedTime,
+                    "averageActualTime": actualTime,
+                    "length": 1
+                });
+            }
+
+            else {
+                connectingStations[index].averagePlannedTime += plannedTime;
+                connectingStations[index].averageActualTime += actualTime;
+                connectingStations[index].length++;
+            }
+        }
+    }
+
+    // Calculate average times
+    for (const station of connectingStations) {
+        station.averagePlannedTime = Math.round(station.averagePlannedTime / station.length);
+        station.averageActualTime = Math.round(station.averageActualTime / station.length);
+    }
+
+    return {
+        "station": station,
+        "length": connectingStations.length,
+        "connectingStations": connectingStations
     }
 }
