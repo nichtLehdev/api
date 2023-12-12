@@ -130,3 +130,5 @@ dist
 .pnp.*
 
 lehdev-api.tar
+
+.DS_Store
