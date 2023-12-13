@@ -3,6 +3,7 @@ import { cache } from '../middleware/cache';
 const router = Router();
 
 import { 
+    getAllConnectionsController,
     getAllStationsController, 
     getDatesOfJourneyController, 
     getJourneyController, 
@@ -12,6 +13,7 @@ import {
     getStatisticsController 
 } from "../controllers/bahn";
 
+router.get('/connections', cache(1800), getAllConnectionsController)
 router.get('/statistics', cache(30), getStatisticsController);
 router.get('/stations',cache(30), getAllStationsController);
 

@@ -9,7 +9,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon server.ts",
-    "build": "tsc && docker build . -t=lehdev-api && docker save lehdev-api > lehdev-api.tar"
+    "build": "tsc && docker build --platform linux/amd64 . -t=lehdev-api && docker save lehdev-api > lehdev-api.tar",
+    "beta-build": "tsc && docker build --platform linux/amd64 . -t=lehdev-api-beta && docker save lehdev-api-beta > lehdev-api-beta.tar"
   },
   "keywords": [],
   "author": "",

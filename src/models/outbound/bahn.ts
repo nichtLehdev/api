@@ -38,3 +38,12 @@ export type Journey = {
     },
     stops: Stop[]
 }
+
+export type Connection = {
+    station1: Station,
+    station2: Station,
+    averagePlannedTime: number,
+    averageActualTime: number,
+    usedStops: number,
+    distance?: number
+}

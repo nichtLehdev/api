@@ -1,7 +1,8 @@
-import { getAllStations, getDatesOfJourney, getJourney, getJourneyOfStationByDs100, getJourneyStationReference, getStationByDs100, getStationByEva, getStationByName, getStationConnections, getStatistics } from "../services/bahn";
+import { getAllConnections, getAllStations, getDatesOfJourney, getJourney, getJourneyOfStationByDs100, getJourneyStationReference, getStationByDs100, getStationByEva, getStationByName, getStationConnections, getStatistics } from "../services/bahn";
 import { Request, Response } from "express";
-import { Station, TrainType } from "../models/outbound/bahn";
+import { Connection, Station, TrainType } from "../models/outbound/bahn";
 import { validateBody } from "../util/validation";
+import * as Cache from 'memory-cache';
 
 
 
@@ -124,6 +125,23 @@ export async function getStationConnectionsController(req: Request, res: Respons
         const stations = await getStationConnections(body.ds100);
 
         res.json(stations);
+    }
+    catch(err: Error | any){
+        res.status(500).json({"error:": err.message});
+    }
+}
+
+export async function getAllConnectionsController(req: Request, res: Response) {
+    try{
+        const connections = JSON.parse(Cache.get('connections') as string) as Connection[];
+        const connStatus = Cache.get('connStatus') as string;
+
+        if(connections === null){
+            res.status(404).send("Not Found -- " + connStatus);
+            return;
+        }
+
+        res.json(connections);
     }
     catch(err: Error | any){
         res.status(500).json({"error:": err.message});

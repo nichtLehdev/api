@@ -1,7 +1,7 @@
 import * as mariadb from 'mariadb';
 import { BahnDbConfig } from '../config/bahn.db';
 import { Station as DbStation, Journey, Stop, StopDetail } from '../models/database/bahn';
-import { Station as ApiStation, Journey as ApiJourney, Stop as ApiStop, TrainType } from '../models/outbound/bahn';
+import { Station as ApiStation, Journey as ApiJourney, Stop as ApiStop, TrainType, Connection } from '../models/outbound/bahn';
 import { v4 as uuidv4 } from 'uuid';
 import * as Cache from 'memory-cache';
 
@@ -455,6 +455,33 @@ async function getNextStop(stop: SmallStop): Promise<SmallStop | null> {
     return rows[0];
 }
 
+function getDistance(station1: ApiStation, station2: ApiStation) {
+    if (!station1.location || !station2.location) {
+        return null;
+    }
+
+    const lat1 = station1.location.latitude;
+    const lon1 = station1.location.longitude;
+    const lat2 = station2.location.latitude;
+    const lon2 = station2.location.longitude;
+
+    const R = 6371e3; // metres
+    const φ1 = lat1 * Math.PI / 180; // φ, λ in radians
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+        Math.cos(φ1) * Math.cos(φ2) *
+        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    const d = R * c; // in metres
+
+    return d;
+}
+
 /**
  * Gets all connections from a station
  * Steps:
@@ -481,7 +508,8 @@ export async function getStationConnections(ds100: string) {
         station: ApiStation,
         averagePlannedTime: number,
         averageActualTime: number,
-        length: number
+        usedStops: number,
+        distance?: number
     }[] = [];
 
     for (const stop of rows) {
@@ -534,13 +562,13 @@ export async function getStationConnections(ds100: string) {
                     "station": prevStation!,
                     "averagePlannedTime": plannedTime,
                     "averageActualTime": actualTime,
-                    "length": 1
+                    "usedStops": 1
                 });
             }
             else {
                 connectingStations[index].averagePlannedTime += plannedTime;
                 connectingStations[index].averageActualTime += actualTime;
-                connectingStations[index].length++;
+                connectingStations[index].usedStops++;
             }
         }
 
@@ -570,27 +598,88 @@ export async function getStationConnections(ds100: string) {
                     "station": nextStation!,
                     "averagePlannedTime": plannedTime,
                     "averageActualTime": actualTime,
-                    "length": 1
+                    "usedStops": 1
                 });
             }
 
             else {
                 connectingStations[index].averagePlannedTime += plannedTime;
                 connectingStations[index].averageActualTime += actualTime;
-                connectingStations[index].length++;
+                connectingStations[index].usedStops++;
             }
         }
     }
 
-    // Calculate average times
-    for (const station of connectingStations) {
-        station.averagePlannedTime = Math.round(station.averagePlannedTime / station.length);
-        station.averageActualTime = Math.round(station.averageActualTime / station.length);
+    // Calculate average times and distances between stations
+    for (const connStation of connectingStations) {
+        connStation.averagePlannedTime = Math.round(connStation.averagePlannedTime / connStation.usedStops);
+        connStation.averageActualTime = Math.round(connStation.averageActualTime / connStation.usedStops);
+
+        // Get distance between stations based on coordinates
+        const distance = getDistance(station, connStation.station);
+        if (distance) {
+            connStation.distance = parseFloat((distance / 1000).toFixed(2))
+        }
     }
 
     return {
         "station": station,
-        "length": connectingStations.length,
+        "usedStops": connectingStations.length,
         "connectingStations": connectingStations
+    }
+}
+
+export async function getAllConnections(){
+    // get all stations
+    const stations = JSON.parse(Cache.get("stations")) as ApiStation[];
+
+    if (!stations) {
+        throw new Error("Stations not found");
+    }
+
+    const connections: Connection[] = [];
+
+    let count = 0;
+
+    for (const station of stations){
+        count++;
+        Cache.put("connStatus", `Processing station ${count}/${stations.length}`)
+        const stationConns = await getStationConnections(station.ds100);
+        for(const conn of stationConns.connectingStations){
+            const index1 = connections.findIndex(c => c.station1.eva === station.eva && c.station2.eva === conn.station.eva);
+            const index2 = connections.findIndex(c => c.station2.eva === station.eva && c.station1.eva === conn.station.eva);
+            if(index1 === -1 && index2 === -1){
+                connections.push({
+                    "station1": station,
+                    "station2": conn.station,
+                    "averagePlannedTime": conn.averagePlannedTime,
+                    "averageActualTime": conn.averageActualTime,
+                    "usedStops": conn.usedStops,
+                    "distance": conn.distance
+                })
+            }
+            else if(index1 !== -1){
+                connections[index1].averagePlannedTime += conn.averagePlannedTime;
+                connections[index1].averageActualTime += conn.averageActualTime;
+                connections[index1].usedStops += conn.usedStops;
+                connections[index1].averagePlannedTime = Math.round(connections[index1].averagePlannedTime / 2);
+                connections[index1].averageActualTime = Math.round(connections[index1].averageActualTime / 2);
+            }
+            else if(index2 !== -1){
+                connections[index2].averagePlannedTime += conn.averagePlannedTime;
+                connections[index2].averageActualTime += conn.averageActualTime;
+                connections[index2].usedStops += conn.usedStops;
+                connections[index2].averagePlannedTime = Math.round(connections[index2].averagePlannedTime / 2);
+                connections[index2].averageActualTime = Math.round(connections[index2].averageActualTime / 2);
+            }
+            else{
+                throw new Error("Something went wrong");
+            }
+        }
+    }
+
+    return {
+        "length": connections.length,
+        "connections": connections
     }
 }
